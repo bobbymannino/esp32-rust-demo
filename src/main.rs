@@ -1,3 +1,5 @@
+mod wifi;
+
 use esp_idf_svc::hal::{
     gpio::{PinDriver, Pull},
     prelude::Peripherals,
