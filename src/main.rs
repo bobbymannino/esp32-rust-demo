@@ -4,7 +4,6 @@ mod reed;
 
 use crate::{button::Button, led::Led, reed::Reed};
 use esp_idf_svc::hal::prelude::*;
-use std::{thread, time::Duration};
 
 fn main() {
     // It is necessary to call this function once. Otherwise some patches to the runtime
@@ -21,8 +20,6 @@ fn main() {
     let button = Button::new(peripherals.pins.gpio15).unwrap();
 
     loop {
-        thread::sleep(Duration::from_millis(50));
-
         if reed.is_on() || button.is_pressed() {
             led.on().unwrap();
         } else {
