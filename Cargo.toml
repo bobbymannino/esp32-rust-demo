@@ -4,7 +4,6 @@ version = "0.1.0"
 authors = ["Bob Mannino <manninobobby@icloud.com>"]
 edition = "2021"
 resolver = "2"
-rust-version = "1.77"
 
 [[bin]]
 name = "esp32-rust-demo"

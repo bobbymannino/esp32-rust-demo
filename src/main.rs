@@ -1,7 +1,8 @@
-use esp_idf_svc::hal::{
-    gpio::{PinDriver, Pull},
-    prelude::Peripherals,
-};
+mod accelerometer;
+mod led;
+
+use crate::led::Led;
+use esp_idf_svc::hal::prelude::*;
 use std::{thread, time::Duration};
 
 fn main() {
@@ -14,18 +15,10 @@ fn main() {
 
     let peripherals = Peripherals::take().unwrap();
 
-    let mut led_pin = PinDriver::output(peripherals.pins.gpio2).unwrap();
-
-    let mut reed_pin = PinDriver::input(peripherals.pins.gpio23).unwrap();
-    reed_pin.set_pull(Pull::Up).unwrap();
+    let mut led = Led::new(peripherals.pins.gpio18).unwrap();
 
     loop {
-        thread::sleep(Duration::from_millis(100));
-
-        if reed_pin.is_low() {
-            led_pin.set_high().unwrap();
-        } else {
-            led_pin.set_low().unwrap();
-        }
+        thread::sleep(Duration::from_millis(500));
+        led.toggle().unwrap();
     }
 }
