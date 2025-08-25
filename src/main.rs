@@ -1,7 +1,7 @@
-mod accelerometer;
 mod led;
+mod reed;
 
-use crate::led::Led;
+use crate::{led::Led, reed::Reed};
 use esp_idf_svc::hal::prelude::*;
 use std::{thread, time::Duration};
 
@@ -16,9 +16,15 @@ fn main() {
     let peripherals = Peripherals::take().unwrap();
 
     let mut led = Led::new(peripherals.pins.gpio18).unwrap();
+    let reed = Reed::new(peripherals.pins.gpio23).unwrap();
 
     loop {
-        thread::sleep(Duration::from_millis(500));
-        led.toggle().unwrap();
+        thread::sleep(Duration::from_millis(50));
+
+        if reed.is_on() {
+            led.on().unwrap();
+        } else {
+            led.off().unwrap();
+        }
     }
 }
