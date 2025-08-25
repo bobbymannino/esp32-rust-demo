@@ -1,7 +1,8 @@
+mod button;
 mod led;
 mod reed;
 
-use crate::{led::Led, reed::Reed};
+use crate::{button::Button, led::Led, reed::Reed};
 use esp_idf_svc::hal::prelude::*;
 use std::{thread, time::Duration};
 
@@ -17,11 +18,12 @@ fn main() {
 
     let mut led = Led::new(peripherals.pins.gpio18).unwrap();
     let reed = Reed::new(peripherals.pins.gpio23).unwrap();
+    let button = Button::new(peripherals.pins.gpio15).unwrap();
 
     loop {
         thread::sleep(Duration::from_millis(50));
 
-        if reed.is_on() {
+        if reed.is_on() || button.is_pressed() {
             led.on().unwrap();
         } else {
             led.off().unwrap();
