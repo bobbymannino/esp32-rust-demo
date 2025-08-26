@@ -1,8 +1,9 @@
 mod button;
 mod led;
 mod reed;
+mod rgb_led;
 
-use crate::{button::Button, led::Led, reed::Reed};
+use crate::{button::Button, rgb_led::RgbLed};
 use esp_idf_svc::hal::prelude::*;
 
 fn main() {
@@ -15,15 +16,27 @@ fn main() {
 
     let peripherals = Peripherals::take().unwrap();
 
-    let mut led = Led::new(peripherals.pins.gpio18).unwrap();
-    let reed = Reed::new(peripherals.pins.gpio23).unwrap();
-    let button = Button::new(peripherals.pins.gpio15).unwrap();
+    let button = Button::new(peripherals.pins.gpio19).unwrap();
+
+    let mut rgb_led = RgbLed::new(
+        peripherals.pins.gpio16,
+        peripherals.pins.gpio5,
+        peripherals.pins.gpio17,
+    )
+    .unwrap();
 
     loop {
-        if reed.is_on() || button.is_pressed() {
-            led.on().unwrap();
+        if button.is_pressed() {
+            rgb_led.blue().unwrap();
+            std::thread::sleep(std::time::Duration::from_millis(100));
+            rgb_led.red().unwrap();
+            std::thread::sleep(std::time::Duration::from_millis(100));
+            rgb_led.green().unwrap();
+            std::thread::sleep(std::time::Duration::from_millis(100));
+            rgb_led.on().unwrap();
+            std::thread::sleep(std::time::Duration::from_millis(100));
         } else {
-            led.off().unwrap();
+            rgb_led.off().unwrap();
         }
     }
 }
