@@ -12,9 +12,13 @@
 //!
 //! ## Usage
 //! ```rust
-//! let mut accel = Accelerometer::new(i2c_peripheral, sda_pin, scl_pin)?;
+//! // Default ±2g range for highest resolution
+//! let mut accel = Accelerometer::new(i2c_peripheral, sda_pin, scl_pin, AccelerometerRange::Range2G)?;
 //! let reading = accel.read()?;
 //! println!("Acceleration: {:.3}g", reading.magnitude());
+//! 
+//! // ±16g range for high acceleration measurements  
+//! let mut accel = Accelerometer::new(i2c_peripheral, sda_pin, scl_pin, AccelerometerRange::Range16G)?;
 //! ```
 
 use esp_idf_svc::hal::{
@@ -37,11 +41,58 @@ const POWER_CTL_WAKEUP: u8 = 0x2;   // Wake up the device (low power mode)
 const POWER_CTL_SLEEP: u8 = 0x4;    // Put device in sleep mode
 const POWER_CTL_MEASURE: u8 = 0x08; // Put device in measurement mode
 
+/// Data format register for configuring measurement range
+const REG_DATA_FORMAT: u8 = 0x31;   // Data format control register
+
 /// Data register addresses for X, Y, Z axis readings
 /// Each axis uses 2 bytes (LSB first, then MSB)
 const REG_DATAX0: u8 = 0x32;  // X-axis data LSB
 const REG_DATAY0: u8 = 0x34;  // Y-axis data LSB  
 const REG_DATAZ0: u8 = 0x36;  // Z-axis data LSB
+
+/// Accelerometer measurement range configuration
+/// 
+/// The ADXL345 supports different measurement ranges with corresponding scale factors.
+/// Higher ranges can measure larger accelerations but with lower resolution.
+#[derive(Debug, Clone, Copy)]
+pub enum AccelerometerRange {
+    /// ±2g range with highest resolution (256 LSB/g)
+    Range2G,
+    /// ±4g range (128 LSB/g)  
+    Range4G,
+    /// ±8g range (64 LSB/g)
+    Range8G,
+    /// ±16g range with lowest resolution (32 LSB/g)
+    Range16G,
+}
+
+impl AccelerometerRange {
+    /// Get the scale factor for converting raw readings to g-force
+    pub fn scale_factor(&self) -> f32 {
+        match self {
+            AccelerometerRange::Range2G => 1.0 / 256.0,
+            AccelerometerRange::Range4G => 1.0 / 128.0,
+            AccelerometerRange::Range8G => 1.0 / 64.0,
+            AccelerometerRange::Range16G => 1.0 / 32.0,
+        }
+    }
+    
+    /// Get the register value for configuring the ADXL345 range
+    fn register_value(&self) -> u8 {
+        match self {
+            AccelerometerRange::Range2G => 0x00,
+            AccelerometerRange::Range4G => 0x01,
+            AccelerometerRange::Range8G => 0x02,
+            AccelerometerRange::Range16G => 0x03,
+        }
+    }
+}
+
+impl Default for AccelerometerRange {
+    fn default() -> Self {
+        AccelerometerRange::Range2G
+    }
+}
 
 /// Acceleration measurement in g-force units
 #[derive(Debug, Clone, Copy)]
@@ -73,12 +124,21 @@ impl AccelerationReading {
 /// # Usage Examples
 /// 
 /// ```rust
-/// // Basic usage
+/// // Basic usage with default ±2g range
 /// let peripherals = Peripherals::take().unwrap();
 /// let mut accel = Accelerometer::new(
 ///     peripherals.i2c0,
 ///     peripherals.pins.gpio21, // SDA
 ///     peripherals.pins.gpio22, // SCL
+///     AccelerometerRange::Range2G, // Optional: specify range
+/// ).unwrap();
+/// 
+/// // High-range configuration for measuring larger accelerations
+/// let mut accel = Accelerometer::new(
+///     peripherals.i2c0,
+///     peripherals.pins.gpio21,
+///     peripherals.pins.gpio22,
+///     AccelerometerRange::Range16G, // ±16g range
 /// ).unwrap();
 /// 
 /// // Read acceleration
@@ -91,6 +151,7 @@ impl AccelerationReading {
 /// ```
 pub struct Accelerometer<'a> {
     i2c: I2cDriver<'a>,
+    scale_factor: f32,
 }
 
 impl<'a> Accelerometer<'a> {
@@ -100,13 +161,24 @@ impl<'a> Accelerometer<'a> {
     /// * `i2c_peripheral` - The I2C peripheral to use (typically i2c0)
     /// * `sda_pin` - The SDA (data) pin (typically GPIO21)
     /// * `scl_pin` - The SCL (clock) pin (typically GPIO22)
+    /// * `range` - The measurement range (±2g, ±4g, ±8g, or ±16g)
     /// 
     /// # Returns
     /// Result containing the accelerometer instance or an error
+    /// 
+    /// # Examples
+    /// ```rust
+    /// // Default ±2g range for highest resolution
+    /// let accel = Accelerometer::new(i2c, sda, scl, AccelerometerRange::Range2G)?;
+    /// 
+    /// // ±16g range for measuring high accelerations (e.g., impacts)
+    /// let accel = Accelerometer::new(i2c, sda, scl, AccelerometerRange::Range16G)?;
+    /// ```
     pub fn new<SDA, SCL>(
         i2c_peripheral: impl esp_idf_svc::hal::peripheral::Peripheral<P = impl esp_idf_svc::hal::i2c::I2c> + 'a,
         sda_pin: SDA,
         scl_pin: SCL,
+        range: AccelerometerRange,
     ) -> Result<Self, EspError>
     where
         SDA: esp_idf_svc::hal::gpio::InputPin + esp_idf_svc::hal::gpio::OutputPin,
@@ -116,7 +188,17 @@ impl<'a> Accelerometer<'a> {
         let i2c_cfg = I2cConfig::new().baudrate(Hertz(400_000));
         let i2c = I2cDriver::new(i2c_peripheral, sda_pin, scl_pin, &i2c_cfg)?;
 
-        let mut accelerometer = Self { i2c };
+        let mut accelerometer = Self { 
+            i2c,
+            scale_factor: range.scale_factor(),
+        };
+
+        // Configure the measurement range in the ADXL345 hardware
+        accelerometer.i2c.write(
+            ADXL345_ADDR, 
+            &[REG_DATA_FORMAT, range.register_value()], 
+            BLOCK
+        )?;
 
         // Initialize the accelerometer in measurement mode
         accelerometer.wake()?;
@@ -127,16 +209,7 @@ impl<'a> Accelerometer<'a> {
     /// Read acceleration data from all three axes
     /// 
     /// Returns acceleration values in units of g-force (1g = 9.8 m/s²).
-    /// The ADXL345 default range is ±2g with a resolution of approximately 0.004g per LSB.
-    /// 
-    /// ## Scale Factor Notes
-    /// The scale factor (1/256) assumes the default ±2g range setting. If you configure
-    /// the accelerometer for different ranges (±4g, ±8g, ±16g), you'll need to adjust
-    /// this scale factor accordingly:
-    /// - ±2g range: 1/256 (default)
-    /// - ±4g range: 1/128 
-    /// - ±8g range: 1/64
-    /// - ±16g range: 1/32
+    /// The scale factor is determined by the range configured in `new()`.
     /// 
     /// # Returns
     /// Result containing AccelerationReading or an error
@@ -155,12 +228,10 @@ impl<'a> Accelerometer<'a> {
         let y_raw = i16::from_le_bytes(y_data);
         let z_raw = i16::from_le_bytes(z_data);
 
-        // Convert to g-force units (assuming ±2g range, 256 LSB/g scale factor)
-        // For other ranges, this scale factor would need to be adjusted
-        let scale_factor = 1.0 / 256.0;
-        let x = x_raw as f32 * scale_factor;
-        let y = y_raw as f32 * scale_factor;
-        let z = z_raw as f32 * scale_factor;
+        // Convert to g-force units using the configured scale factor
+        let x = x_raw as f32 * self.scale_factor;
+        let y = y_raw as f32 * self.scale_factor;
+        let z = z_raw as f32 * self.scale_factor;
 
         Ok(AccelerationReading::new(x, y, z))
     }
@@ -255,6 +326,7 @@ pub fn run_continuous_reading() -> Result<(), EspError> {
         peripherals.i2c0,
         peripherals.pins.gpio21, // SDA
         peripherals.pins.gpio22, // SCL
+        AccelerometerRange::Range2G, // Use default ±2g range
     )?;
 
     loop {

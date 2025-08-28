@@ -11,16 +11,25 @@ use esp_idf_svc::hal::prelude::*;
    Example usage of the accelerometer module:
 
    // Basic accelerometer usage:
-   use crate::accelerometer::{Accelerometer, run_continuous_reading};
+   use crate::accelerometer::{Accelerometer, AccelerometerRange, run_continuous_reading};
 
    fn use_accelerometer() {
        let peripherals = Peripherals::take().unwrap();
        
-       // Create accelerometer instance
+       // Create accelerometer instance with default ±2g range
        let mut accel = Accelerometer::new(
            peripherals.i2c0,
            peripherals.pins.gpio21, // SDA
            peripherals.pins.gpio22, // SCL
+           AccelerometerRange::Range2G, // ±2g range for highest resolution
+       ).unwrap();
+       
+       // Or create with ±16g range for high acceleration measurements
+       let mut accel_high_range = Accelerometer::new(
+           peripherals.i2c0,
+           peripherals.pins.gpio21, // SDA
+           peripherals.pins.gpio22, // SCL
+           AccelerometerRange::Range16G, // ±16g range for impacts/vibrations
        ).unwrap();
        
        // Read scaled measurement in g-force
