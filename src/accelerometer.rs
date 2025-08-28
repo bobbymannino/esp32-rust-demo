@@ -1,3 +1,22 @@
+//! # ADXL345 Accelerometer Driver for ESP32
+//!
+//! This module provides a clean, object-oriented interface for the ADXL345 3-axis accelerometer.
+//! 
+//! ## Key Improvements from Original Implementation:
+//! - **Struct-based API**: Replaced functional approach with proper struct and methods
+//! - **Clean measurements**: `AccelerationReading` struct with helper methods like `magnitude()`
+//! - **Power management**: Added `sleep()` and `wake()` methods for power conservation
+//! - **Proper error handling**: Uses `Result<T, EspError>` throughout
+//! - **Comprehensive documentation**: Detailed comments and usage examples
+//! - **Reusable design**: No more infinite loops, allows integration with other components
+//!
+//! ## Usage
+//! ```rust
+//! let mut accel = Accelerometer::new(i2c_peripheral, sda_pin, scl_pin)?;
+//! let reading = accel.read()?;
+//! println!("Acceleration: {:.3}g", reading.magnitude());
+//! ```
+
 use esp_idf_svc::hal::{
     delay::BLOCK,
     i2c::{I2cConfig, I2cDriver},
@@ -107,8 +126,17 @@ impl<'a> Accelerometer<'a> {
 
     /// Read acceleration data from all three axes
     /// 
-    /// Returns acceleration values in units of g-force (1g = 9.8 m/s²)
-    /// The ADXL345 has a resolution of approximately 0.004g per LSB in ±2g range
+    /// Returns acceleration values in units of g-force (1g = 9.8 m/s²).
+    /// The ADXL345 default range is ±2g with a resolution of approximately 0.004g per LSB.
+    /// 
+    /// ## Scale Factor Notes
+    /// The scale factor (1/256) assumes the default ±2g range setting. If you configure
+    /// the accelerometer for different ranges (±4g, ±8g, ±16g), you'll need to adjust
+    /// this scale factor accordingly:
+    /// - ±2g range: 1/256 (default)
+    /// - ±4g range: 1/128 
+    /// - ±8g range: 1/64
+    /// - ±16g range: 1/32
     /// 
     /// # Returns
     /// Result containing AccelerationReading or an error
@@ -135,6 +163,31 @@ impl<'a> Accelerometer<'a> {
         let z = z_raw as f32 * scale_factor;
 
         Ok(AccelerationReading::new(x, y, z))
+    }
+
+    /// Read raw acceleration data without scale conversion
+    /// 
+    /// Returns the raw 16-bit signed integers from the accelerometer registers.
+    /// This is useful if you want to apply custom scaling or processing.
+    /// 
+    /// # Returns
+    /// Result containing (x_raw, y_raw, z_raw) as i16 values or an error
+    pub fn read_raw(&mut self) -> Result<(i16, i16, i16), EspError> {
+        let mut x_data: [u8; 2] = [0; 2];
+        let mut y_data: [u8; 2] = [0; 2]; 
+        let mut z_data: [u8; 2] = [0; 2];
+
+        // Read 2 bytes for each axis (LSB first, then MSB)
+        self.i2c.write_read(ADXL345_ADDR, &[REG_DATAX0], &mut x_data, BLOCK)?;
+        self.i2c.write_read(ADXL345_ADDR, &[REG_DATAY0], &mut y_data, BLOCK)?;
+        self.i2c.write_read(ADXL345_ADDR, &[REG_DATAZ0], &mut z_data, BLOCK)?;
+
+        // Convert little-endian bytes to signed 16-bit integers
+        let x_raw = i16::from_le_bytes(x_data);
+        let y_raw = i16::from_le_bytes(y_data);
+        let z_raw = i16::from_le_bytes(z_data);
+
+        Ok((x_raw, y_raw, z_raw))
     }
 
     /// Put the accelerometer into sleep mode to conserve power

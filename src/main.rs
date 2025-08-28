@@ -23,9 +23,14 @@ use esp_idf_svc::hal::prelude::*;
            peripherals.pins.gpio22, // SCL
        ).unwrap();
        
-       // Read single measurement
+       // Read scaled measurement in g-force
        let reading = accel.read().unwrap();
        println!("X: {:.3}g, Y: {:.3}g, Z: {:.3}g", reading.x, reading.y, reading.z);
+       println!("Magnitude: {:.3}g", reading.magnitude());
+       
+       // Read raw values for custom processing
+       let (x_raw, y_raw, z_raw) = accel.read_raw().unwrap();
+       println!("Raw values - X: {}, Y: {}, Z: {}", x_raw, y_raw, z_raw);
        
        // Power management
        accel.sleep().unwrap();  // Save power when not needed
