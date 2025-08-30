@@ -4,7 +4,7 @@ mod led;
 mod reed;
 mod rgb_led;
 
-use crate::accelerometer::{AccelerationReading, Accelerometer, AccelerometerRange};
+use crate::accelerometer::{AccelerationReading, Accelerometer, AccelerometerRange, run_continuous_reading};
 use esp_idf_svc::hal::prelude::*;
 use std::{thread, time::Duration};
 
