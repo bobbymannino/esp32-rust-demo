@@ -8,32 +8,58 @@ This demo includes drivers for:
 - Button input (GPIO19)
 - RGB LED output (GPIO16, GPIO5, GPIO17)
 - Reed switch input
-- **ADXL345 Accelerometer** - 3-axis accelerometer via I2C
+- **ADXL345 Accelerometer** - 3-axis accelerometer via I2C or SPI
 
 ## Accelerometer (ADXL345) Usage
 
-The accelerometer module provides a clean, object-oriented API for interfacing with the ADXL345 3-axis accelerometer over I2C.
+The accelerometer module provides a clean, object-oriented API for interfacing with the ADXL345 3-axis accelerometer over I2C or SPI.
 
 ### Hardware Connections
+
+#### I2C Mode (Default)
 - **VCC**: 3.3V
 - **GND**: Ground  
 - **SDA**: GPIO21 (I2C data line)
 - **SCL**: GPIO22 (I2C clock line)
 
+#### SPI Mode (Alternative)
+- **VCC**: 3.3V
+- **GND**: Ground
+- **SCLK**: GPIO18 (SPI clock line)
+- **MOSI (SDI)**: GPIO23 (SPI data input to ADXL345)
+- **MISO (SDO)**: GPIO19 (SPI data output from ADXL345)  
+- **CS**: GPIO5 (Chip select, any available GPIO)
+
 ### Code Examples
 
 ```rust
-use crate::accelerometer::{Accelerometer, AccelerationReading};
+use crate::accelerometer::{Accelerometer, AccelerationReading, AccelerometerRange};
+use esp_idf_svc::hal::{spi::{SpiDriver, SpiDriverConfig}, prelude::*};
 
-// Initialize accelerometer
+// I2C Example (Default method)
 let peripherals = Peripherals::take().unwrap();
 let mut accel = Accelerometer::new(
     peripherals.i2c0,
     peripherals.pins.gpio21, // SDA
     peripherals.pins.gpio22, // SCL
+    AccelerometerRange::Range16G,
 ).unwrap();
 
-// Read acceleration data
+// SPI Example (Alternative method)
+let spi_driver = SpiDriver::new(
+    peripherals.spi2,
+    peripherals.pins.gpio18, // SCLK
+    peripherals.pins.gpio23, // MOSI
+    Some(peripherals.pins.gpio19), // MISO
+    &SpiDriverConfig::new(),
+).unwrap();
+let mut accel = Accelerometer::new_spi(
+    &spi_driver,
+    peripherals.pins.gpio5, // CS
+    AccelerometerRange::Range16G,
+).unwrap();
+
+// Reading data works the same for both I2C and SPI
 let reading = accel.read().unwrap();
 println!("X: {:.3}g, Y: {:.3}g, Z: {:.3}g", reading.x, reading.y, reading.z);
 println!("Magnitude: {:.3}g", reading.magnitude());
