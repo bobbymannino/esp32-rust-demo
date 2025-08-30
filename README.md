@@ -57,6 +57,17 @@ The accelerometer supports sleep/wake functionality to conserve power:
 
 Power management is especially useful in battery-powered applications where the accelerometer isn't needed continuously.
 
+### Autosleep Feature
+
+The main application now includes intelligent autosleep functionality:
+
+- **Motion Threshold**: Automatically wakes up when acceleration exceeds **1.5g**
+- **Inactivity Timeout**: Goes to sleep after 5 seconds of motion below threshold
+- **Sleep Monitoring**: Checks for motion every 1 second while sleeping
+- **Power Savings**: Significantly reduces power consumption during periods of low activity
+
+The autosleep feature provides optimal power efficiency while ensuring responsive motion detection above the 1.5g threshold.
+
 ### Continuous Reading
 
 For applications that need continuous acceleration monitoring:
