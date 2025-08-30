@@ -21,9 +21,11 @@ fn main() {
 
     loop {
         if accel.is_connected() {
-            let AccelerationReading { x, y, z } = accel.read().unwrap();
-            println!("Acceleration: ({}, {}, {})", x, y, z);
-            println!("");
+            if let Ok(reading) = accel.read() {
+                if reading.magnitude() > 1.0 {
+                    println!("Magnitude: {}", reading.magnitude());
+                }
+            }
         } else {
             println!("Accelerometer not connected");
         }
