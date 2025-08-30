@@ -233,14 +233,19 @@ impl<'a> CommInterface<'a> {
             CommInterface::Spi(spi) => {
                 // In SPI mode, multi-byte reads need both read bit and multi-byte bit set
                 let spi_register = start_register | SPI_READ_BIT | SPI_MULTI_BYTE_BIT;
-                let mut tx_buffer = vec![0u8; buffer.len() + 1];
-                tx_buffer[0] = spi_register;
                 
-                let mut rx_buffer = vec![0u8; buffer.len() + 1];
-                spi.transfer(&mut rx_buffer, &tx_buffer)?;
+                // For ADXL345, we'll never read more than 6 bytes at once (3 axes * 2 bytes each)
+                // so a fixed array is sufficient and more embedded-friendly
+                let mut tx_buffer = [0u8; 8]; // Max 7 bytes needed (1 cmd + 6 data)
+                let mut rx_buffer = [0u8; 8];
+                
+                tx_buffer[0] = spi_register;
+                let transfer_len = buffer.len() + 1;
+                
+                spi.transfer(&mut rx_buffer[..transfer_len], &tx_buffer[..transfer_len])?;
                 
                 // Copy the data portion (skip the first dummy byte)
-                buffer.copy_from_slice(&rx_buffer[1..]);
+                buffer.copy_from_slice(&rx_buffer[1..transfer_len]);
                 Ok(())
             }
         }
@@ -359,19 +364,14 @@ impl<'a> Accelerometer<'a> {
     /// # Returns
     /// Result containing AccelerationReading or an error
     pub fn read(&mut self) -> Result<AccelerationReading, EspError> {
-        let mut x_data: [u8; 2] = [0; 2];
-        let mut y_data: [u8; 2] = [0; 2];
-        let mut z_data: [u8; 2] = [0; 2];
+        // Read all 6 bytes at once for better efficiency (X, Y, Z data)
+        let mut data = [0u8; 6];
+        self.comm.read_registers(REG_DATAX0, &mut data)?;
 
-        // Read 2 bytes for each axis (LSB first, then MSB)
-        self.comm.read_registers(REG_DATAX0, &mut x_data)?;
-        self.comm.read_registers(REG_DATAY0, &mut y_data)?;
-        self.comm.read_registers(REG_DATAZ0, &mut z_data)?;
-
-        // Convert little-endian bytes to signed 16-bit integers
-        let x_raw = i16::from_le_bytes(x_data);
-        let y_raw = i16::from_le_bytes(y_data);
-        let z_raw = i16::from_le_bytes(z_data);
+        // Convert pairs of bytes to signed 16-bit integers (little-endian)
+        let x_raw = i16::from_le_bytes([data[0], data[1]]);
+        let y_raw = i16::from_le_bytes([data[2], data[3]]);
+        let z_raw = i16::from_le_bytes([data[4], data[5]]);
 
         // Convert to g-force units using the configured scale factor
         let x = x_raw as f32 * self.scale_factor;
@@ -389,19 +389,14 @@ impl<'a> Accelerometer<'a> {
     /// # Returns
     /// Result containing (x_raw, y_raw, z_raw) as i16 values or an error
     pub fn read_raw(&mut self) -> Result<(i16, i16, i16), EspError> {
-        let mut x_data: [u8; 2] = [0; 2];
-        let mut y_data: [u8; 2] = [0; 2];
-        let mut z_data: [u8; 2] = [0; 2];
+        // Read all 6 bytes at once for better efficiency
+        let mut data = [0u8; 6];
+        self.comm.read_registers(REG_DATAX0, &mut data)?;
 
-        // Read 2 bytes for each axis (LSB first, then MSB)
-        self.comm.read_registers(REG_DATAX0, &mut x_data)?;
-        self.comm.read_registers(REG_DATAY0, &mut y_data)?;
-        self.comm.read_registers(REG_DATAZ0, &mut z_data)?;
-
-        // Convert little-endian bytes to signed 16-bit integers
-        let x_raw = i16::from_le_bytes(x_data);
-        let y_raw = i16::from_le_bytes(y_data);
-        let z_raw = i16::from_le_bytes(z_data);
+        // Convert pairs of bytes to signed 16-bit integers (little-endian)
+        let x_raw = i16::from_le_bytes([data[0], data[1]]);
+        let y_raw = i16::from_le_bytes([data[2], data[3]]);
+        let z_raw = i16::from_le_bytes([data[4], data[5]]);
 
         Ok((x_raw, y_raw, z_raw))
     }
@@ -456,8 +451,11 @@ impl<'a> Accelerometer<'a> {
 /// 
 /// This function shows how to use the accelerometer for continuous monitoring
 /// and works with both I2C and SPI interfaces.
+/// Note: This function takes ownership of peripherals, so it should be called 
+/// instead of your main loop, not in addition to it.
 pub fn run_continuous_reading() -> Result<(), EspError> {
-    let peripherals = Peripherals::take().unwrap();
+    // Take peripherals - this should only be called once in your application
+    let peripherals = Peripherals::take().expect("Failed to take peripherals");
 
     // Example using I2C (comment out if using SPI instead)
     let mut accel = Accelerometer::new(
