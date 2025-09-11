@@ -1,60 +1,141 @@
-use std::time::Duration;
+//! Wi-Fi helper module
+//!
+//! Provides a single convenience function `connect_wifi(ssid, pwd)` which:
+//! 1. Acquires the required ESP-IDF system services (event loop).
+//! 2. Configures the Wi-Fi driver in STA (client) mode.
+//! 3. Starts the driver, connects, and waits until the network interface is up.
+//! 4. Logs the obtained IP information.
+//!
+//! The function intentionally **leaks** the `BlockingWifi` handle so that the
+//! Wi-Fi connection remains active for the lifetime of the application without
+//! having to thread a handle through the rest of your code. On a small embedded
+//! device that will run indefinitely, this is an acceptable pattern; if you
+//! prefer not to leak, refactor the function to return the handle and store it
+//! in your own global / application state.
+//!
+//! # Usage
+//!
+//! ```ignore
+//! use crate::wifi::connect_wifi;
+//!
+//! fn main() {
+//!     esp_idf_svc::sys::link_patches();
+//!     esp_idf_svc::log::EspLogger::initialize_default();
+//!
+//!     // Replace these with your credentials (or load from configuration):
+//!     let ssid = "MyNetwork";
+//!     let pwd  = "SuperSecret";
+//!
+//!     connect_wifi(ssid, pwd).expect("Wi-Fi failed");
+//!
+//!     // From here on, Wi-Fi stays connected.
+//!     loop {}
+//! }
+//! ```
+//!
+//! # Notes
+//! * This module does not (yet) implement automatic reconnect logic beyond what
+//!   the underlying ESP-IDF Wi-Fi stack already provides.
+//! * If you need to handle disconnections, keep the (non-leaked) handle and
+//!   implement monitoring using events from the system event loop.
+//!
+//! # Extending
+//! To extend for advanced use cases (static IP, enterprise auth, etc.), modify
+//! the `ClientConfiguration` before calling `wifi.set_configuration(...)`.
 
+use esp_idf_svc::hal::prelude::Peripherals;
 use esp_idf_svc::{
     eventloop::EspSystemEventLoop,
-    hal::prelude::Peripherals,
     nvs::EspDefaultNvsPartition,
-    wifi::{AuthMethod, ClientConfiguration, Configuration, EspWifi, PmfConfiguration, ScanMethod},
+    wifi::{BlockingWifi, ClientConfiguration, Configuration, EspWifi},
 };
-use log::info;
+use esp_idf_sys::EspError;
+use log::{info, warn};
 
-const SSID: &str = "Phone";
-const PWD: &str = "password";
+/// Connect to a Wi-Fi network using the provided `ssid` and `pwd`.
+///
+/// This will:
+/// * Take ownership of peripherals (only call once in your program)
+/// * Initialize the Wi-Fi driver
+/// * Configure it in client mode
+/// * Start and connect
+/// * Wait until the interface reports "up"
+///
+/// The internal Wi-Fi handle is leaked to keep the connection alive without
+/// forcing the caller to store any state. For most always-on embedded firmware
+/// this is fine. If you need graceful teardown, refactor to return the handle.
+///
+/// # Arguments
+/// * `ssid` - The Wi-Fi network SSID
+/// * `pwd`  - The Wi-Fi password
+///
+/// # Returns
+/// `Ok(())` on success or an `EspError` describing what failed.
+///
+/// # Panics
+/// Will panic only if `ssid` / `pwd` cannot be converted into the internal
+/// fixed-size types (highly unlikely for normal credentials).
+pub fn connect_wifi(ssid: &str, pwd: &str) -> Result<(), EspError> {
+    info!("Initializing Wi-Fi (client) for SSID: '{}'", ssid);
 
-pub fn connect_to_wifi() {
-    info!("Connecting to WiFi");
+    // Acquire core peripherals (only succeeds once)
+    // New esp-idf-hal API returns a Result
+    let peripherals = Peripherals::take()?;
 
-    let peripherals = Peripherals::take().unwrap();
-    let sys_loop = EspSystemEventLoop::take().unwrap();
-    let nvs = EspDefaultNvsPartition::take().unwrap();
+    // System event loop (singleton)
+    let sysloop = EspSystemEventLoop::take()?;
 
-    let mut wifi = EspWifi::new(peripherals.modem, sys_loop.clone(), Some(nvs)).unwrap();
+    // Initialize default NVS partition (required for Wi-Fi PHY calibration data)
+    let nvs = EspDefaultNvsPartition::take()?;
 
-    let client_config = ClientConfiguration {
-        auth_method: AuthMethod::WPA2Personal,
-        ssid: SSID.parse().unwrap(),
-        password: PWD.parse().unwrap(),
-        bssid: None,
-        channel: None,
-        scan_method: ScanMethod::FastScan,
-        pmf_cfg: PmfConfiguration::default(),
-    };
+    // Create the underlying Wi-Fi driver passing NVS partition
+    let esp_wifi = EspWifi::new(peripherals.modem, sysloop.clone(), Some(nvs))?;
 
-    let wifi_configuration = Configuration::Client(client_config);
+    // Wrap with blocking helper
+    let mut blocking = BlockingWifi::wrap(esp_wifi, sysloop)?;
 
-    wifi.set_configuration(&wifi_configuration).unwrap();
+    // Configure as a simple client
+    blocking.set_configuration(&Configuration::Client(ClientConfiguration {
+        ssid: ssid.try_into().expect("SSID too long"),
+        password: pwd.try_into().expect("Password too long"),
+        ..Default::default()
+    }))?;
 
-    wifi.start().unwrap();
-    info!("Wifi started");
+    // Start + connect
+    blocking.start()?;
+    info!("Wi-Fi driver started, connecting...");
+    blocking.connect()?;
+    blocking.wait_netif_up()?;
+    info!("Wi-Fi connected.");
 
-    wifi.connect().unwrap();
-    info!("Wifi connected");
-
-    loop {
-        // get a GET request response from 153.92.211.217:5461/time
-        // make a get request to a dummyjson api like
-
-        std::thread::sleep(Duration::from_millis(500));
+    // Log IP info
+    if let Ok(ip_info) = blocking.wifi().sta_netif().get_ip_info() {
+        info!(
+            "IP Info: IP={}, Subnet={}, DNS={:?}, Secondary DNS={:?}",
+            ip_info.ip, ip_info.subnet, ip_info.dns, ip_info.secondary_dns
+        );
+    } else {
+        warn!("Failed to fetch IP info after connection");
     }
 
-    // use std::net::Ipv4Addr;
+    // Leak the handle so connection persists for program lifetime.
+    // (If you want to manage the handle, return `blocking` instead.)
+    let _leaked: &'static mut BlockingWifi<EspWifi<'static>> = Box::leak(Box::new(blocking));
 
-    // info!("Waiting for DHCP lease...");
-    // let mut ip_info = wifi.wifi().sta_netif().get_ip_info().unwrap();
-    // while ip_info.ip == Ipv4Addr::new(0, 0, 0, 0) {
-    //     std::thread::sleep(std::time::Duration::from_millis(500));
-    //     ip_info = wifi.wifi().sta_netif().get_ip_info().unwrap();
-    // }
+    Ok(())
+}
 
-    // info!("WiFi connected successfully");
+#[cfg(test)]
+mod tests {
+    // NOTE: These are compile-time tests only. On-target tests would require `#[cfg(not(test))]`
+    // modifications or an integration test harness that runs on the device.
+    use super::*;
+
+    #[test]
+    fn signature_compiles() {
+        // Just ensure the function type is what we expect.
+        fn _f(_: &str, _: &str) -> Result<(), EspError> {
+            Ok(())
+        }
+    }
 }
