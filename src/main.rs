@@ -1,3 +1,9 @@
+mod wifi;
+
+use esp_idf_svc::hal::{
+    gpio::{PinDriver, Pull},
+    prelude::Peripherals,
+};
 mod accelerometer;
 mod button;
 mod led;
