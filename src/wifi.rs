@@ -43,14 +43,14 @@
 //! To extend for advanced use cases (static IP, enterprise auth, etc.), modify
 //! the `ClientConfiguration` before calling `wifi.set_configuration(...)`.
 
+use esp_idf_svc::eventloop::EspSystemEventLoop;
 use esp_idf_svc::hal::prelude::Peripherals;
 use esp_idf_svc::{
-    eventloop::EspSystemEventLoop,
     nvs::EspDefaultNvsPartition,
     wifi::{BlockingWifi, ClientConfiguration, Configuration, EspWifi},
 };
 use esp_idf_sys::EspError;
-use log::{info, warn};
+use log::{error, info, warn};
 
 /// Connect to a Wi-Fi network using the provided `ssid` and `pwd`.
 ///
@@ -58,8 +58,8 @@ use log::{info, warn};
 /// * Take ownership of peripherals (only call once in your program)
 /// * Initialize the Wi-Fi driver
 /// * Configure it in client mode
-/// * Start and connect
-/// * Wait until the interface reports "up"
+/// * Start the driver, scan and list available APs
+/// * Connect (unless already connected) and wait until the interface reports "up"
 ///
 /// The internal Wi-Fi handle is leaked to keep the connection alive without
 /// forcing the caller to store any state. For most always-on embedded firmware
@@ -101,12 +101,42 @@ pub fn connect_wifi(ssid: &str, pwd: &str) -> Result<(), EspError> {
         ..Default::default()
     }))?;
 
-    // Start + connect
+    // Start driver
     blocking.start()?;
-    info!("Wi-Fi driver started, connecting...");
-    blocking.connect()?;
-    blocking.wait_netif_up()?;
-    info!("Wi-Fi connected.");
+    info!("Wi-Fi driver started. Scanning for access points...");
+
+    // Perform a scan and list visible access points
+    match blocking.scan() {
+        Ok(aps) => {
+            info!("Found {} access points:", aps.len());
+            for ap in &aps {
+                // Rely on Debug formatting of AccessPointInfo to avoid field-name drift across versions
+                info!("  {:?}", ap);
+            }
+        }
+        Err(e) => {
+            warn!("Wi-Fi scan failed: {e:?}");
+        }
+    }
+
+    // If already connected (e.g. credentials stored & auto-connected) skip reconnect
+    match blocking.wifi().is_connected() {
+        Ok(true) => {
+            info!("Already connected; skipping explicit connect()");
+        }
+        _ => {
+            info!("Connecting to '{}'", ssid);
+            if let Err(e) = blocking.connect() {
+                error!("Wi-Fi connect() returned error: {e:?}");
+                return Err(e);
+            }
+            if let Err(e) = blocking.wait_netif_up() {
+                error!("Wi-Fi wait_netif_up() returned error: {e:?}");
+                return Err(e);
+            }
+            info!("Wi-Fi connected.");
+        }
+    }
 
     // Log IP info
     if let Ok(ip_info) = blocking.wifi().sta_netif().get_ip_info() {
@@ -123,19 +153,4 @@ pub fn connect_wifi(ssid: &str, pwd: &str) -> Result<(), EspError> {
     let _leaked: &'static mut BlockingWifi<EspWifi<'static>> = Box::leak(Box::new(blocking));
 
     Ok(())
-}
-
-#[cfg(test)]
-mod tests {
-    // NOTE: These are compile-time tests only. On-target tests would require `#[cfg(not(test))]`
-    // modifications or an integration test harness that runs on the device.
-    use super::*;
-
-    #[test]
-    fn signature_compiles() {
-        // Just ensure the function type is what we expect.
-        fn _f(_: &str, _: &str) -> Result<(), EspError> {
-            Ok(())
-        }
-    }
 }
