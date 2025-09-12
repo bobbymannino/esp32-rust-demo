@@ -9,7 +9,7 @@ mod wifi;
 
 use std::{thread, time::Duration};
 
-use crate::wifi::connect_wifi;
+use crate::{email::send_email, wifi::connect_wifi};
 
 const SSID: &str = "11 Plym Street";
 const PWD: &str = "AaaBbbccc1";
@@ -19,7 +19,7 @@ fn main() {
     esp_idf_svc::log::EspLogger::initialize_default();
 
     connect_wifi(SSID, PWD).expect("Failed to connect Wi-Fi");
-    // send_email();
+    send_email();
 
     loop {
         thread::sleep(Duration::from_millis(50));
