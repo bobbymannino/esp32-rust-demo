@@ -1,5 +1,6 @@
 mod accelerometer;
 mod button;
+mod gy521;
 mod led;
 mod reed;
 mod rgb_led;
@@ -11,6 +12,8 @@ use log::info;
 use std::{thread, time::Duration};
 
 use crate::sh1107::SH1107;
+// Uncomment the following line to use the GY521 IMU module
+// use crate::gy521::GY521;
 
 fn main() {
     esp_idf_svc::sys::link_patches();
@@ -86,4 +89,35 @@ fn main() {
             .flush(&mut i2c, addr)
             .expect("Failed to flush display");
     }
+
+    /* Example usage of GY521 IMU module - uncomment to use:
+    
+    // Note: You need to uncomment the GY521 import at the top of this file
+    // and use a different I2C peripheral or different pins than the display
+    
+    // Initialize GY521
+    let mut gy521 = GY521::new(
+        peripherals.i2c1,  // Use a different I2C peripheral if available
+        peripherals.pins.gpio18,  // SDA
+        peripherals.pins.gpio19,  // SCL
+    ).unwrap();
+
+    loop {
+        // Read rotation, movement, and temperature
+        match (gy521.read_rotation(), gy521.read_movement(), gy521.read_temperature()) {
+            (Ok(rotation), Ok(movement), Ok(temp)) => {
+                info!("Rotation - X: {:.2}°/s, Y: {:.2}°/s, Z: {:.2}°/s", 
+                      rotation.x, rotation.y, rotation.z);
+                info!("Movement - X: {:.2}g, Y: {:.2}g, Z: {:.2}g", 
+                      movement.x, movement.y, movement.z);
+                info!("Temperature: {:.1}°C", temp);
+            }
+            _ => {
+                info!("Error reading GY521 sensor data");
+            }
+        }
+        
+        thread::sleep(Duration::from_millis(500));
+    }
+    */
 }
