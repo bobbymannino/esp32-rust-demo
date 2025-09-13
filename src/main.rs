@@ -1,31 +1,18 @@
 mod accelerometer;
 mod button;
 mod email;
+mod gy521;
 mod led;
 mod reed;
 mod rgb_led;
 mod sh1107;
 mod wifi;
 
-use std::{thread, time::Duration};
-
-use email::send_email;
-use esp_idf_hal::prelude::Peripherals;
-use wifi::connect_wifi;
-
-const SSID: &str = env!("WIFI_SSID");
-const PWD: &str = env!("WIFI_PWD");
+use log::info;
 
 fn main() {
     esp_idf_svc::sys::link_patches();
     esp_idf_svc::log::EspLogger::initialize_default();
 
-    let peripherals = Peripherals::take().expect("failed to get peripherals");
-
-    let _net = connect_wifi(peripherals.modem, SSID, PWD).expect("Failed to connect to Wi-Fi");
-    send_email();
-
-    loop {
-        thread::sleep(Duration::from_millis(50));
-    }
+    info!("Hello there");
 }
