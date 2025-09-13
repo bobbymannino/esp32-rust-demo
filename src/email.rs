@@ -1,7 +1,6 @@
 use esp_idf_svc::http::{client::EspHttpConnection, Headers};
 use esp_idf_sys::esp_crt_bundle_attach;
 use log::info;
-use std::io::{Read, Write}; // Enable use of the global certificate bundle
 
 const UNSEND_KEY: &str = "us_idcmsu4xm8_644335c2368608799f63242090250d65";
 

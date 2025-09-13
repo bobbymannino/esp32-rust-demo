@@ -10,6 +10,7 @@ mod wifi;
 use std::{thread, time::Duration};
 
 use email::send_email;
+use esp_idf_hal::prelude::Peripherals;
 use wifi::connect_wifi;
 
 const SSID: &str = "ssid-here";
@@ -19,7 +20,9 @@ fn main() {
     esp_idf_svc::sys::link_patches();
     esp_idf_svc::log::EspLogger::initialize_default();
 
-    connect_wifi(SSID, PWD).expect("Failed to connect to Wi-Fi");
+    let peripherals = Peripherals::take().expect("failed to get peripherals");
+
+    connect_wifi(peripherals.modem, SSID, PWD).expect("Failed to connect to Wi-Fi");
     send_email();
 
     loop {

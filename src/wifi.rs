@@ -1,6 +1,6 @@
+use esp_idf_hal::modem::Modem;
 use esp_idf_hal::task::block_on;
 use esp_idf_svc::eventloop::EspSystemEventLoop;
-use esp_idf_svc::hal::prelude::Peripherals;
 use esp_idf_svc::timer::EspTaskTimerService;
 use esp_idf_svc::wifi::{AsyncWifi, AuthMethod};
 use esp_idf_svc::{
@@ -9,11 +9,8 @@ use esp_idf_svc::{
 };
 use log::info;
 
-pub fn connect_wifi(ssid: &str, pwd: &str) -> anyhow::Result<()> {
+pub fn connect_wifi(modem: Modem, ssid: &str, pwd: &str) -> anyhow::Result<()> {
     info!("connecting to wifi: {}", ssid);
-
-    info!("setting up peripherals");
-    let peripherals = Peripherals::take().expect("failed to set up peripherals");
 
     info!("setting up system event loop");
     let sys_loop = EspSystemEventLoop::take().expect("failed to setup sys_loop");
@@ -24,7 +21,7 @@ pub fn connect_wifi(ssid: &str, pwd: &str) -> anyhow::Result<()> {
     info!("setting up nvs partition");
     let nvs = EspDefaultNvsPartition::take().expect("failed to setup nvs");
 
-    let async_wifi_config = EspWifi::new(peripherals.modem, sys_loop.clone(), Some(nvs))
+    let async_wifi_config = EspWifi::new(modem, sys_loop.clone(), Some(nvs))
         .expect("failed to create AsyncWifi config");
 
     let mut wifi = AsyncWifi::wrap(async_wifi_config, sys_loop, timer_svc)
