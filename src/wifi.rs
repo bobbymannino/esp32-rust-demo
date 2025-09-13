@@ -9,7 +9,14 @@ use esp_idf_svc::{
 };
 use log::info;
 
-pub fn connect_wifi(modem: Modem, ssid: &str, pwd: &str) -> anyhow::Result<()> {
+pub struct NetResources {
+    pub sys_loop: EspSystemEventLoop,
+    pub timer: EspTaskTimerService,
+    pub nvs: EspDefaultNvsPartition,
+    pub wifi: AsyncWifi<EspWifi<'static>>,
+}
+
+pub fn connect_wifi(modem: Modem, ssid: &str, pwd: &str) -> anyhow::Result<NetResources> {
     info!("connecting to wifi: {}", ssid);
 
     info!("setting up system event loop");
@@ -21,23 +28,29 @@ pub fn connect_wifi(modem: Modem, ssid: &str, pwd: &str) -> anyhow::Result<()> {
     info!("setting up nvs partition");
     let nvs = EspDefaultNvsPartition::take().expect("failed to setup nvs");
 
-    let async_wifi_config = EspWifi::new(modem, sys_loop.clone(), Some(nvs))
+    let async_wifi_config = EspWifi::new(modem, sys_loop.clone(), Some(nvs.clone()))
         .expect("failed to create AsyncWifi config");
 
-    let mut wifi = AsyncWifi::wrap(async_wifi_config, sys_loop, timer_svc)
+    let mut wifi = AsyncWifi::wrap(async_wifi_config, sys_loop.clone(), timer_svc.clone())
         .expect("failed to create AsyncWifi");
 
     block_on(connect_ssid(&mut wifi, &ssid, &pwd))?;
 
-    let ip_info = wifi.wifi().sta_netif().get_ip_info()?;
+    info!("Getting ip info");
+    let ip_info = wifi
+        .wifi()
+        .sta_netif()
+        .get_ip_info()
+        .expect("failed to get ip info");
 
     info!("Wifi DHCP info: {ip_info:?}");
 
-    info!("Shutting down in 5s...");
-
-    std::thread::sleep(core::time::Duration::from_secs(5));
-
-    Ok(())
+    Ok(NetResources {
+        sys_loop,
+        timer: timer_svc,
+        nvs,
+        wifi,
+    })
 }
 
 async fn connect_ssid(

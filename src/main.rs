@@ -22,7 +22,7 @@ fn main() {
 
     let peripherals = Peripherals::take().expect("failed to get peripherals");
 
-    connect_wifi(peripherals.modem, SSID, PWD).expect("Failed to connect to Wi-Fi");
+    let _net = connect_wifi(peripherals.modem, SSID, PWD).expect("Failed to connect to Wi-Fi");
     send_email();
 
     loop {

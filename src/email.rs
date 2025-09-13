@@ -1,63 +1,63 @@
-use esp_idf_svc::http::{client::EspHttpConnection, Headers};
+use embedded_svc::http::client::Client as HttpClient;
+use embedded_svc::utils::io;
+use esp_idf_hal::io::Write;
+use esp_idf_svc::http::{
+    client::{Configuration, EspHttpConnection},
+    Headers,
+};
 use esp_idf_sys::esp_crt_bundle_attach;
-use log::info;
+use log::{error, info};
 
 const UNSEND_KEY: &str = "us_idcmsu4xm8_644335c2368608799f63242090250d65";
 
 pub fn send_email() {
     info!("Sending email...");
 
-    let mut config = esp_idf_svc::http::client::Configuration::default();
-    // Attach the ESP-IDF built-in certificate bundle so TLS server certs are validated.
-    // Requires sdkconfig enabling MBEDTLS_CERTIFICATE_BUNDLE.
+    let mut config = Configuration::default();
     config.crt_bundle_attach = Some(esp_crt_bundle_attach);
-    let mut client = EspHttpConnection::new(&config).expect("Failed to create client");
-    info!("Client created");
+    info!("attached crt bundle");
 
-    let uri = "https://send.bobman.dev/api/v1/emails";
+    let conn = EspHttpConnection::new(&config).expect("failed to create connection");
+
+    let mut client = HttpClient::wrap(conn);
+
+    let url = "https://send.bobman.dev/api/v1/emails";
+
     let mut headers: Headers = Headers::new();
-    headers.set("authorization", UNSEND_KEY);
+    let auth_value = format!("Bearer: {}", UNSEND_KEY);
+    headers.set("Authorization", auth_value.as_str());
     headers.set("content-type", "application/json");
 
     // Minimal JSON payload (adjust as needed or parameterize the function)
-    let body = "{\"to\":\"manninobobby@icloud.com\",\"from\":\"bob@bobman.dev.com\",\"subject\":\"ESP32 Test\",\"text\":\"Hello from ESP32 over Rust!\"}";
+    let body = b"{\"to\":\"manninobobby@icloud.com\",\"from\":\"bob@bobman.dev\",\"subject\":\"ESP32 Test\",\"text\":\"Hello from ESP32 over Rust!\"}";
     let content_length = body.len().to_string();
     headers.set("content-length", &content_length);
     info!("Headers set");
 
-    client
-        .initiate_request(esp_idf_svc::http::Method::Post, uri, &headers.as_slice())
-        .expect("Failed to initiate POST request");
-    info!("Request initiated");
+    let mut req = client
+        .post(url, &headers.as_slice())
+        .expect("failed to POST");
 
-    // Write request body
-    client
-        .write_all(body.as_bytes())
-        .expect("Failed to write request body");
-    info!("Request body written");
+    req.write_all(body).expect("failed to write body");
+    req.flush().expect("failed to flush");
 
-    // Optionally read a portion of the response (may block until server responds)
-    let mut buf = [0u8; 256];
-    if let Ok(len) = client.read(&mut buf) {
-        if len > 0 {
-            if let Ok(snippet) = core::str::from_utf8(&buf[..len]) {
-                info!("response (truncated): {}", snippet);
-            } else {
-                info!("response (non-UTF8, {} bytes)", len);
-            }
-        }
-    }
+    let mut res = req.submit().expect("failed to submit");
 
-    info!("status: {}", client.status().to_string());
+    let status = res.status();
+    info!("status of POST returned is {status}");
 
-    // curl --request POST \
-    //   --url https://send.bobman.dev/api/v1/emails \
-    //   --header 'Content-Type: application/json' \
-    //   --data '{
-    //   "to": "<string>",
-    //   "from": "<string>",
-    //   "subject": "<string>",
-    //   "text": "<string>",
-    //   }'
-    // }'
+    let mut buf = [0u8; 1024];
+    let bytes_read = io::try_read_full(&mut res, &mut buf)
+        .map_err(|e| e.0)
+        .expect("failed to read res body");
+    info!("Read {bytes_read} bytes");
+
+    match std::str::from_utf8(&buf[0..bytes_read]) {
+        Ok(body_string) => info!(
+            "Response body (truncated to {} bytes): {:?}",
+            buf.len(),
+            body_string
+        ),
+        Err(e) => error!("Error decoding response body: {e}"),
+    };
 }

@@ -1,5 +1,4 @@
 use embedded_hal::i2c::I2c;
-use log::info;
 
 const WIDTH: usize = 128;
 const HEIGHT: usize = 128;

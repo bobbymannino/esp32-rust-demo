@@ -24,11 +24,9 @@
 use esp_idf_svc::hal::{
     delay::BLOCK,
     i2c::{I2cConfig, I2cDriver},
-    prelude::Peripherals,
     units::Hertz,
 };
 use esp_idf_sys::EspError;
-use std::{thread, time::Duration};
 
 /// ADXL345 3-axis accelerometer I2C address
 /// Found in the I2C section of the ADXL345 datasheet:
