@@ -28,6 +28,11 @@ esp-idf-hal = "0.45"
 esp-idf-sys = "0.36"
 embedded-hal = "1.0.0"
 embedded-svc = "0.28.1"
+blocking-network-stack = { git = "https://github.com/bjoernQ/blocking-network-stack.git", rev = "b3ecefc222d8806edd221f266999ca339c52d34e", default-features = false, features = [
+  "dhcpv4",
+  "tcp",
+] }
+anyhow = "1.0.99"
 
 # --- Optional Embassy Integration ---
 # esp-idf-svc = { version = "0.51", features = ["critical-section", "embassy-time-driver", "embassy-sync"] }
