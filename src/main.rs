@@ -13,8 +13,8 @@ use email::send_email;
 use esp_idf_hal::prelude::Peripherals;
 use wifi::connect_wifi;
 
-const SSID: &str = "ssid-here";
-const PWD: &str = "password-here";
+const SSID: &str = env!("WIFI_SSID");
+const PWD: &str = env!("WIFI_PWD");
 
 fn main() {
     esp_idf_svc::sys::link_patches();
