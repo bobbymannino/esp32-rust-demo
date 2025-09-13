@@ -22,7 +22,7 @@ fn main() {
     esp_idf_svc::sys::link_patches();
     esp_idf_svc::log::EspLogger::initialize_default();
 
-    connect_wifi(SSID, PWD).expect("Failed to connect Wi-Fi");
+    connect_wifi(SSID, PWD).expect("Failed to connect to Wi-Fi");
     send_email();
 
     loop {
