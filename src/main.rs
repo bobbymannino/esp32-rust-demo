@@ -1,22 +1,19 @@
-mod wifi;
-
-use esp_idf_svc::hal::{
-    gpio::{PinDriver, Pull},
-    prelude::Peripherals,
-};
 mod accelerometer;
 mod button;
+mod email;
 mod led;
 mod reed;
 mod rgb_led;
 mod sh1107;
+mod wifi;
 
-use esp_idf_hal::i2c::{I2cConfig, I2cDriver};
-use esp_idf_hal::prelude::*;
-use log::info;
 use std::{thread, time::Duration};
 
-use crate::sh1107::SH1107;
+use email::send_email;
+use wifi::connect_wifi;
+
+const SSID: &str = "ssid-here";
+const PWD: &str = "password-here";
 
 fn main() {
     esp_idf_svc::sys::link_patches();
@@ -27,9 +24,5 @@ fn main() {
 
     loop {
         thread::sleep(Duration::from_millis(50));
-
-        display
-            .flush(&mut i2c, addr)
-            .expect("Failed to flush display");
     }
 }
